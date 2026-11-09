@@ -32,7 +32,9 @@ Toàn bộ quá trình xử lý hình ảnh và giải mã diễn ra **100% cụ
 - 🧠 **Giải mã QR đa tầng (Multi-Pass Decoding Engine)**:
   - **Tầng 1**: Ưu tiên sử dụng API phần cứng gốc `BarcodeDetector` của trình duyệt.
   - **Tầng 2**: Tự động chuyển đổi dự phòng sang thư viện `jsQR` đóng gói sẵn cục bộ.
-  - **Tầng 3 (Tự động phục hồi QR mờ/nhỏ)**: Nếu lần đầu chưa đọc được, hệ thống tự động phóng đại `2x`, bổ sung viền trắng (*quiet zone*), chuyển sang ảnh xám (*grayscale*) và tăng cường độ tương phản để giải mã lại.
+  - **Tầng 3 (Xử lý QR chấm tròn / Chrome Dino & QR mờ/nhỏ)**: Tích hợp thuật toán đóng hình thái học (**Morphological Closing**) kèm ngưỡng độ chói thích nghi (*adaptive threshold*), tự động thêm viền trắng (*quiet zone*) và phóng đại `2x` giúp đọc chính xác các mã QR nghệ thuật dạng chấm rời rạc (như Chrome Dino QR), mã QR có logo ở tâm hoặc mã QR kích thước nhỏ/mờ.
+- 📁 **Quét file ảnh trực tiếp trong Popup**:
+  - Hỗ trợ nút **📁 Chọn ảnh**, kéo-thả file ảnh hoặc dán ảnh (`Ctrl + V`) trực tiếp vào Popup để giải mã ngay từ máy tính.
 - 🛡️ **Cô lập giao diện bằng Shadow DOM**:
   - Toàn bộ lớp phủ chọn vùng và hộp kết quả được đóng gói trong `ShadowRoot` (`z-index: 2147483647`), giữ giao diện luôn đồng nhất, không bị phá vỡ bởi CSS của trang web đích.
 - 🕘 **Quản lý lịch sử quét thông minh**:
