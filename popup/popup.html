@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QR Snap Scanner</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="popup-header">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">📷</div>
+        <div class="brand-text">
+          <h1 class="brand-title">QR Snap Scanner</h1>
+          <p class="brand-subtitle">Phím tắt: <kbd>Alt+Shift+Q</kbd></p>
+        </div>
+      </div>
+      <button id="scanNowBtn" type="button" class="btn btn-primary" title="Quét vùng chứa mã QR trên trang hiện tại">
+        Quét ngay
+      </button>
+    </header>
+
+    <!-- Thông báo trạng thái khi trang hiện tại không cho phép quét -->
+    <div id="statusBanner" class="status-banner" hidden></div>
+
+    <!-- Thanh tiêu đề lịch sử + nút Xóa tất cả -->
+    <div class="section-bar">
+      <span id="historyCount" class="section-title">Lịch sử quét gần đây (0/20)</span>
+      <button id="clearAllBtn" type="button" class="btn-link-danger" hidden>
+        Xóa tất cả
+      </button>
+    </div>
+
+    <!-- Danh sách lịch sử 20 lần quét gần nhất -->
+    <main class="history-wrapper">
+      <div id="emptyState" class="empty-state">
+        <div class="empty-icon" aria-hidden="true">🔍</div>
+        <p class="empty-title">Chưa có lịch sử quét nào</p>
+        <p class="empty-desc">Nhấn chuột phải vào trang web và chọn <strong>“📷 Quét mã QR”</strong> hoặc bấm nút <strong>Quét ngay</strong> ở trên.</p>
+      </div>
+      <ul id="historyList" class="history-list" aria-label="Lịch sử quét mã QR"></ul>
+    </main>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

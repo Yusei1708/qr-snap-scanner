@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "QR Snap Scanner",
+  "version": "1.0.0",
+  "description": "Quét và giải mã mã QR trực tiếp trên trang web bằng cách kéo chọn vùng màn hình hoặc chuột phải vào ảnh.",
+  "permissions": [
+    "contextMenus",
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "QR Snap Scanner"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "Mở lịch sử quét QR"
+    },
+    "scan-qr-area": {
+      "suggested_key": {
+        "default": "Alt+Shift+Q",
+        "mac": "Alt+Shift+Q"
+      },
+      "description": "Quét mã QR bằng cách chọn vùng trên màn hình"
+    }
+  }
+}
