@@ -17,12 +17,18 @@
           <p class="brand-subtitle">Phím tắt: <kbd>Alt+Shift+Q</kbd></p>
         </div>
       </div>
-      <button id="scanNowBtn" type="button" class="btn btn-primary" title="Quét vùng chứa mã QR trên trang hiện tại">
-        Quét ngay
-      </button>
+      <div class="header-actions">
+        <button id="scanFileBtn" type="button" class="btn" title="Chọn hoặc kéo thả file ảnh QR từ máy tính">
+          📁 Chọn ảnh
+        </button>
+        <button id="scanNowBtn" type="button" class="btn btn-primary" title="Quét vùng chứa mã QR trên trang hiện tại">
+          Quét ngay
+        </button>
+        <input id="qrFileInput" type="file" accept="image/*" hidden>
+      </div>
     </header>
 
-    <!-- Thông báo trạng thái khi trang hiện tại không cho phép quét -->
+    <!-- Thông báo trạng thái khi trang hiện tại không cho phép quét hoặc kết quả quét file -->
     <div id="statusBanner" class="status-banner" hidden></div>
 
     <!-- Thanh tiêu đề lịch sử + nút Xóa tất cả -->
@@ -38,12 +44,13 @@
       <div id="emptyState" class="empty-state">
         <div class="empty-icon" aria-hidden="true">🔍</div>
         <p class="empty-title">Chưa có lịch sử quét nào</p>
-        <p class="empty-desc">Nhấn chuột phải vào trang web và chọn <strong>“📷 Quét mã QR”</strong> hoặc bấm nút <strong>Quét ngay</strong> ở trên.</p>
+        <p class="empty-desc">Nhấn chuột phải vào trang web và chọn <strong>“📷 Quét mã QR”</strong>, bấm <strong>Quét ngay</strong> hoặc <strong>📁 Chọn ảnh</strong> ở trên.</p>
       </div>
       <ul id="historyList" class="history-list" aria-label="Lịch sử quét mã QR"></ul>
     </main>
   </div>
 
+  <script src="../lib/jsQR.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -376,6 +376,7 @@ if (typeof chrome !== 'undefined' && chrome.contextMenus && chrome.contextMenus.
         });
       } catch (err) {
         console.warn('[QR Snap] Failed to trigger area selection:', err);
+        showRestrictedBadge(targetTab.id);
       }
     } else if (info.menuItemId === MENU_IMAGE_ID && info.srcUrl) {
       try {
@@ -391,6 +392,7 @@ if (typeof chrome !== 'undefined' && chrome.contextMenus && chrome.contextMenus.
         );
       } catch (err) {
         console.warn('[QR Snap] Failed to trigger image scan:', err);
+        showRestrictedBadge(targetTab.id);
       }
     }
   });
@@ -418,6 +420,7 @@ if (typeof chrome !== 'undefined' && chrome.commands && chrome.commands.onComman
           });
         } catch (err) {
           console.warn('[QR Snap] Failed to trigger command selection:', err);
+          showRestrictedBadge(tab.id);
         }
       });
     }
@@ -500,4 +503,6 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
     return false;
   });
 }
+
+
 

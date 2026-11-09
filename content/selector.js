@@ -175,13 +175,23 @@
 
   /**
    * Tải một chuỗi Data URL hoặc URL thành đối tượng HTMLImageElement.
+   * Không gán crossOrigin='anonymous' cho giao thức file:, data:, blob: để tránh lỗi CORS trên file nội bộ.
    * @param {string} src
+   * @param {boolean} [useCrossOrigin=true]
    * @returns {Promise<HTMLImageElement>}
    */
-  function loadImage(src) {
+  function loadImage(src, useCrossOrigin = true) {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.crossOrigin = 'anonymous';
+      const lower = String(src || '').trim().toLowerCase();
+      const isLocalOrInline =
+        lower.startsWith('file:') ||
+        lower.startsWith('data:') ||
+        lower.startsWith('blob:') ||
+        lower.startsWith('chrome-extension:');
+      if (useCrossOrigin && !isLocalOrInline) {
+        img.crossOrigin = 'anonymous';
+      }
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error('Không thể tải dữ liệu hình ảnh'));
       img.src = src;
@@ -195,7 +205,7 @@
    * @returns {Promise<HTMLCanvasElement>}
    */
   async function cropCapturedScreenshot(dataUrl, rect) {
-    const img = await loadImage(dataUrl);
+    const img = await loadImage(dataUrl, false);
     const dpr = window.devicePixelRatio || 1;
 
     const sx = Math.max(0, Math.round(rect.left * dpr));
@@ -209,6 +219,217 @@
 
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+    return canvas;
+  }
+
+  /**
+   * Tạo bản sao Canvas có thêm viền trắng (quiet zone) xung quanh ảnh gốc
+   * để cứu trường hợp người dùng kéo cắt sát vào mép đen của mã QR.
+   *
+   * @param {HTMLCanvasElement} sourceCanvas
+   * @param {number} [quietZone=20]
+   * @returns {HTMLCanvasElement}
+   */
+  function createQuietZoneCanvas(sourceCanvas, quietZone = 20) {
+    const targetWidth = sourceCanvas.width + quietZone * 2;
+    const targetHeight = sourceCanvas.height + quietZone * 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, targetWidth, targetHeight);
+    ctx.drawImage(sourceCanvas, quietZone, quietZone);
+    return canvas;
+  }
+
+  /**
+   * Tạo bản sao Canvas được co giãn về kích thước mục tiêu kèm viền trắng (quiet zone).
+   *
+   * @param {HTMLCanvasElement} sourceCanvas
+   * @param {number} targetMaxDim
+   * @param {number} [quietZone=16]
+   * @returns {HTMLCanvasElement}
+   */
+  function createScaledCanvas(sourceCanvas, targetMaxDim, quietZone = 16) {
+    const maxSide = Math.max(sourceCanvas.width, sourceCanvas.height, 1);
+    const ratio = targetMaxDim / maxSide;
+    const scaledWidth = Math.max(1, Math.round(sourceCanvas.width * ratio));
+    const scaledHeight = Math.max(1, Math.round(sourceCanvas.height * ratio));
+    const targetWidth = scaledWidth + quietZone * 2;
+    const targetHeight = scaledHeight + quietZone * 2;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, targetWidth, targetHeight);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(
+      sourceCanvas,
+      0,
+      0,
+      sourceCanvas.width,
+      sourceCanvas.height,
+      quietZone,
+      quietZone,
+      scaledWidth,
+      scaledHeight
+    );
+    return canvas;
+  }
+
+  /**
+   * Phép đóng hình thái học (Morphological Closing = Dilation điểm tối + Erosion điểm tối)
+   * giúp nối liền các chấm tròn rời rạc (dot-matrix QR như mã QR Khủng long của Chrome,
+   * Zalo QR, QR nghệ thuật có logo ở giữa) thành các ô vuông liền mạch để jsQR định vị chính xác
+   * Alignment Pattern mà không bị nhiễu bởi logo trung tâm.
+   *
+   * Hỗ trợ:
+   * - Ngưỡng nhị phân hóa thích nghi (adaptive luminance threshold) theo dải động thực tế của ảnh,
+   *   giúp giải mã cả mã QR chấm tròn màu sáng (vàng/cam) hoặc độ tương phản thấp.
+   * - Đảo ngược đầu vào (`invertInput`) cho mã QR chấm trắng trên nền tối (dark mode).
+   * - Bán kính Erosion tùy chỉnh (`erodeRadius`) để cứu các mã QR nghệ thuật có chấm tròn siêu nhỏ (< 40% ô module).
+   *
+   * @param {HTMLCanvasElement} sourceCanvas
+   * @param {number} [radius=2] - Bán kính Dilation (px)
+   * @param {number} [maxDim=450] - Kích thước chuẩn hóa tối đa trước khi lọc
+   * @param {{ erodeRadius?: number, invertInput?: boolean }} [options]
+   * @returns {HTMLCanvasElement}
+   */
+  function createMorphClosedCanvas(sourceCanvas, radius = 2, maxDim = 450, options = {}) {
+    const erodeRadius =
+      options && typeof options.erodeRadius === 'number' ? options.erodeRadius : radius;
+    const invertInput = Boolean(options && options.invertInput);
+
+    const maxSide = Math.max(sourceCanvas.width, sourceCanvas.height, 1);
+    const scale = maxSide > maxDim ? maxDim / maxSide : 1;
+    const scaledW = Math.max(1, Math.round(sourceCanvas.width * scale));
+    const scaledH = Math.max(1, Math.round(sourceCanvas.height * scale));
+    const quietZone = 20;
+    const w = scaledW + quietZone * 2;
+    const h = scaledH + quietZone * 2;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = invertInput ? '#000000' : '#FFFFFF';
+    ctx.fillRect(0, 0, w, h);
+    ctx.imageSmoothingEnabled = scale < 1;
+    ctx.drawImage(
+      sourceCanvas,
+      0,
+      0,
+      sourceCanvas.width,
+      sourceCanvas.height,
+      quietZone,
+      quietZone,
+      scaledW,
+      scaledH
+    );
+
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const rgba = imageData.data;
+    const totalPixels = w * h;
+
+    // 1. Chuyển sang độ chói (luminance), coi pixel trong suốt là nền sáng và tính dải động
+    const gray = new Uint8Array(totalPixels);
+    let minLum = 255;
+    let maxLum = 0;
+    for (let i = 0, p = 0; i < rgba.length; i += 4, p++) {
+      let lum;
+      if (rgba[i + 3] < 128) {
+        lum = 255;
+      } else {
+        lum = Math.round(0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2]);
+        if (invertInput) {
+          lum = 255 - lum;
+        }
+      }
+      gray[p] = lum;
+      if (lum < minLum) minLum = lum;
+      if (lum > maxLum) maxLum = lum;
+    }
+
+    // 2. Dilation vùng tối (Separable 2D Min-Filter với bán kính radius)
+    const temp = new Uint8Array(totalPixels);
+    const dilated = new Uint8Array(totalPixels);
+
+    for (let y = 0; y < h; y++) {
+      const rowOffset = y * w;
+      for (let x = 0; x < w; x++) {
+        let minVal = 255;
+        const xStart = Math.max(0, x - radius);
+        const xEnd = Math.min(w - 1, x + radius);
+        for (let kx = xStart; kx <= xEnd; kx++) {
+          const val = gray[rowOffset + kx];
+          if (val < minVal) minVal = val;
+        }
+        temp[rowOffset + x] = minVal;
+      }
+    }
+
+    for (let y = 0; y < h; y++) {
+      const yStart = Math.max(0, y - radius);
+      const yEnd = Math.min(h - 1, y + radius);
+      for (let x = 0; x < w; x++) {
+        let minVal = 255;
+        for (let ky = yStart; ky <= yEnd; ky++) {
+          const val = temp[ky * w + x];
+          if (val < minVal) minVal = val;
+        }
+        dilated[y * w + x] = minVal;
+      }
+    }
+
+    // 3. Erosion vùng tối (Separable 2D Max-Filter với bán kính erodeRadius) để khôi phục biên chuẩn
+    const closed = new Uint8Array(totalPixels);
+
+    for (let y = 0; y < h; y++) {
+      const rowOffset = y * w;
+      for (let x = 0; x < w; x++) {
+        let maxVal = 0;
+        const xStart = Math.max(0, x - erodeRadius);
+        const xEnd = Math.min(w - 1, x + erodeRadius);
+        for (let kx = xStart; kx <= xEnd; kx++) {
+          const val = dilated[rowOffset + kx];
+          if (val > maxVal) maxVal = val;
+        }
+        temp[rowOffset + x] = maxVal;
+      }
+    }
+
+    for (let y = 0; y < h; y++) {
+      const yStart = Math.max(0, y - erodeRadius);
+      const yEnd = Math.min(h - 1, y + erodeRadius);
+      for (let x = 0; x < w; x++) {
+        let maxVal = 0;
+        for (let ky = yStart; ky <= yEnd; ky++) {
+          const val = temp[ky * w + x];
+          if (val > maxVal) maxVal = val;
+        }
+        closed[y * w + x] = maxVal;
+      }
+    }
+
+    // 4. Nhị phân hóa sắc nét theo ngưỡng thích nghi (adaptive threshold)
+    const lumRange = maxLum - minLum;
+    const threshold = lumRange > 20 ? Math.round(minLum + lumRange * 0.65) : 165;
+
+    for (let p = 0, i = 0; p < totalPixels; p++, i += 4) {
+      const v = closed[p] < threshold ? 0 : 255;
+      rgba[i] = v;
+      rgba[i + 1] = v;
+      rgba[i + 2] = v;
+      rgba[i + 3] = 255;
+    }
+
+    ctx.putImageData(imageData, 0, 0);
     return canvas;
   }
 
@@ -314,10 +535,15 @@
   }
 
   /**
-   * Giải mã QR từ một Canvas với cơ chế thử lại:
+   * Giải mã QR từ một Canvas với cơ chế thử lại đa tầng:
    * - Lần 1: Ảnh gốc đã cắt.
-   * - Lần 2: Ảnh phóng to 2x + chuyển sang ảnh xám + tăng tương phản (1.6x).
-   * - Lần 3: Ảnh phóng to 2x + ngưỡng nhị phân tương phản cao (2.4x) cho mã QR mờ.
+   * - Lần 2: Ảnh gốc thêm viền trắng (quiet zone) để cứu trường hợp cắt sát mép.
+   * - Lần 3: Đóng hình thái học (Morphological Closing) bán kính 2px, 1px, 3px, 4px và (4px, 3px)
+   *          để nối các chấm tròn rời rạc (mã QR Khủng long của Chrome, QR chấm tròn siêu nhỏ,
+   *          QR chấm trắng trên nền tối, hoặc QR nằm trong ảnh chụp màn hình rộng).
+   * - Lần 4: Chuẩn hóa kích thước (240px / 300px) giúp gom cụm điểm ảnh QR nhỏ hoặc độ phân giải cao.
+   * - Lần 5: Ảnh phóng to 2x + chuyển sang ảnh xám + tăng tương phản (1.65x).
+   * - Lần 6: Ảnh phóng to 2x + ngưỡng tương phản cao (2.5x) cho mã QR rất nhỏ hoặc mờ.
    *
    * @param {HTMLCanvasElement} baseCanvas
    * @returns {Promise<string|null>}
@@ -329,14 +555,67 @@
       return firstPass;
     }
 
-    // Lần 2: Phóng to 2x + ảnh xám + tăng tương phản vừa phải
+    // Lần 2: Thêm viền trắng (quiet zone) cho ảnh bị cắt sát mép
+    const paddedCanvas = createQuietZoneCanvas(baseCanvas, 20);
+    const paddedPass = await tryDecodeSingleCanvas(paddedCanvas);
+    if (paddedPass) {
+      return paddedPass;
+    }
+
+    // Lần 3: Xử lý mã QR dạng chấm tròn (dot-matrix / Chrome Dino QR / logo ở tâm) bằng Morphological Closing
+    for (const radius of [2, 1, 3, 4]) {
+      const morphCanvas = createMorphClosedCanvas(baseCanvas, radius, 450);
+      const morphPass = await tryDecodeSingleCanvas(morphCanvas);
+      if (morphPass) {
+        return morphPass;
+      }
+    }
+
+    // Lần 3b: Hỗ trợ mã QR chấm tròn siêu nhỏ (< 40% kích thước ô module) bằng đóng bất đối xứng nhẹ (dR=4, eR=3)
+    const tinyDotCanvas = createMorphClosedCanvas(baseCanvas, 4, 450, { erodeRadius: 3 });
+    const tinyDotPass = await tryDecodeSingleCanvas(tinyDotCanvas);
+    if (tinyDotPass) {
+      return tinyDotPass;
+    }
+
+    // Lần 3c: Hỗ trợ mã QR chấm trắng trên nền tối (inverted dot-matrix QR) bị cắt sát mép
+    for (const radius of [2, 3]) {
+      const invMorphCanvas = createMorphClosedCanvas(baseCanvas, radius, 450, { invertInput: true });
+      const invMorphPass = await tryDecodeSingleCanvas(invMorphCanvas);
+      if (invMorphPass) {
+        return invMorphPass;
+      }
+    }
+
+    // Lần 3d: Nếu vùng chụp lớn (> 700px, ví dụ kéo chọn cả màn hình 1080p chứa mã QR ở giữa),
+    // thử Morphological Closing ở độ phân giải 900px để không làm mất chi tiết mã QR
+    if (Math.max(baseCanvas.width, baseCanvas.height) > 700) {
+      for (const radius of [2, 1, 3]) {
+        const hiResMorphCanvas = createMorphClosedCanvas(baseCanvas, radius, 900);
+        const hiResMorphPass = await tryDecodeSingleCanvas(hiResMorphCanvas);
+        if (hiResMorphPass) {
+          return hiResMorphPass;
+        }
+      }
+    }
+
+    // Lần 4: Chuẩn hóa kích thước trung bình (hữu ích cho mã QR chấm tròn nhỏ hoặc ảnh quá lớn)
+    for (const targetDim of [240, 300]) {
+      const scaledCanvas = createScaledCanvas(baseCanvas, targetDim, 16);
+      const scaledPass = await tryDecodeSingleCanvas(scaledCanvas);
+      if (scaledPass) {
+        return scaledPass;
+      }
+    }
+
+    // Lần 5: Phóng to 2x + ảnh xám + tăng tương phản vừa phải
     const enhancedCanvas = createEnhancedCanvas(baseCanvas, 2, 1.65);
     const secondPass = await tryDecodeSingleCanvas(enhancedCanvas);
     if (secondPass) {
       return secondPass;
     }
 
-    // Lần 3: Phóng to 2x + tăng tương phản mạnh kèm viền trắng cho các mã QR rất nhỏ hoặc thiếu viền
+    // Lần 6: Phóng to 2x + tăng tương phản mạnh kèm viền trắng cho các mã QR rất nhỏ hoặc thiếu viền
     const highContrastCanvas = createEnhancedCanvas(baseCanvas, 2, 2.5);
     return tryDecodeSingleCanvas(highContrastCanvas);
   }
@@ -545,7 +824,8 @@
   }
 
   /**
-   * Tải ảnh từ URL bất kỳ (dùng proxy ở background nếu bị chặn CORS) và vẽ lên Canvas.
+   * Tải ảnh từ URL bất kỳ (ưu tiên thẻ <img> sẵn có trên DOM cho file:// hoặc cùng nguồn,
+   * sau đó thử tải trực tiếp, rồi dùng proxy ở background nếu bị chặn CORS) và vẽ lên Canvas.
    * @param {string} srcUrl
    * @returns {Promise<HTMLCanvasElement>}
    */
@@ -553,9 +833,32 @@
     let img;
     let canvas;
 
-    // Thử tải trực tiếp trước, nếu bị lỗi CORS hoặc tainted canvas thì nhờ background fetch về dạng Data URL
+    // 1. Nếu trên DOM đã có sẵn thẻ <img> đang hiển thị đúng ảnh này (rất hiệu quả cho file:// và ảnh cùng domain)
     try {
-      img = await loadImage(srcUrl);
+      const domImages = Array.from(document.querySelectorAll('img'));
+      const existingImg = domImages.find(
+        (el) => el.currentSrc === srcUrl || el.src === srcUrl || el.getAttribute('src') === srcUrl
+      );
+      if (existingImg && existingImg.complete && (existingImg.naturalWidth || existingImg.width) > 0) {
+        canvas = document.createElement('canvas');
+        canvas.width = existingImg.naturalWidth || existingImg.width;
+        canvas.height = existingImg.naturalHeight || existingImg.height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(existingImg, 0, 0);
+        ctx.getImageData(0, 0, 1, 1);
+        return canvas;
+      }
+    } catch (_) {
+      // Nếu canvas bị tainted bởi ảnh cross-origin trên DOM, tiếp tục các bước dưới
+    }
+
+    // 2. Thử tải trực tiếp bằng Image (có crossOrigin cho http/https, bỏ crossOrigin cho file:/data:/blob:)
+    try {
+      try {
+        img = await loadImage(srcUrl, true);
+      } catch (_) {
+        img = await loadImage(srcUrl, false);
+      }
       canvas = document.createElement('canvas');
       canvas.width = img.naturalWidth || img.width;
       canvas.height = img.naturalHeight || img.height;
@@ -565,7 +868,7 @@
       ctx.getImageData(0, 0, 1, 1);
       return canvas;
     } catch (_) {
-      // Fallback sang FETCH_IMAGE_DATA_URL qua service worker
+      // 3. Fallback sang FETCH_IMAGE_DATA_URL qua service worker
       const dataUrl = await new Promise((resolve, reject) => {
         chrome.runtime.sendMessage({ action: 'FETCH_IMAGE_DATA_URL', url: srcUrl }, (res) => {
           if (chrome.runtime.lastError) {
@@ -580,7 +883,7 @@
         });
       });
 
-      img = await loadImage(dataUrl);
+      img = await loadImage(dataUrl, false);
       canvas = document.createElement('canvas');
       canvas.width = img.naturalWidth || img.width;
       canvas.height = img.naturalHeight || img.height;
@@ -688,6 +991,11 @@
     cleanup: cleanupSelection,
     startSelectionMode,
     cleanupSelection,
-    handleScanImageUrl
+    handleScanImageUrl,
+    decodeCanvasWithRetry,
+    createMorphClosedCanvas,
+    createQuietZoneCanvas,
+    createScaledCanvas,
+    createEnhancedCanvas
   };
 })();

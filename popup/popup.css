@@ -108,23 +108,33 @@ body {
   border: 1px solid var(--border);
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* Nút bấm */
 .btn {
   appearance: none;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 7px 12px;
+  padding: 6px 10px;
   border-radius: 8px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 4px;
   transition: background-color 140ms ease, border-color 140ms ease, transform 80ms ease;
   white-space: nowrap;
+}
+
+.btn:hover {
+  background: var(--surface-hover);
 }
 
 .btn:active {
@@ -142,7 +152,7 @@ body {
   border-color: var(--primary-hover);
 }
 
-/* Banner cảnh báo */
+/* Banner cảnh báo / thành công */
 .status-banner {
   margin: 10px 16px 0;
   padding: 9px 12px;
@@ -152,6 +162,24 @@ body {
   font-size: 12.5px;
   font-weight: 500;
   border: 1px solid rgba(220, 38, 38, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.status-banner[hidden] {
+  display: none !important;
+}
+
+.status-banner.is-success {
+  background: rgba(22, 163, 74, 0.12);
+  color: var(--success);
+  border-color: rgba(22, 163, 74, 0.3);
+}
+
+.status-banner-btn {
+  align-self: flex-start;
+  margin-top: 2px;
 }
 
 /* Thanh tiêu đề danh sách */
